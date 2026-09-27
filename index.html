@@ -48,8 +48,10 @@
     //   desc:  みじかい せつめい
     //   icon:  えもじ 1つ (よめなくても わかる ように)
     //   color: 'orange' | 'blue' | 'yellow' | '' (カード の いろ)
+    //   tag:   ゲーム の しゅるい (カード の うえ に ちいさく でる)
     var GAMES = [
-      { id: 'neko-viewer', title: 'ねこ を みる', desc: 'くるくる まわして みよう', icon: '🐱', color: 'orange' }
+      { id: 'neko-omise', title: 'ねこ の おみせ', desc: 'だれを どこに おく？ なにを うる？', icon: '🏪', color: 'yellow', tag: 'おみせ' },
+      { id: 'neko-viewer', title: 'ねこ を みる', desc: 'くるくる まわして みよう', icon: '🐱', color: 'orange', tag: 'みる' }
     ];
 
     var gamesEl = document.getElementById('games');
@@ -58,6 +60,7 @@
       a.className = 'card' + (g.color ? ' card--' + g.color : '');
       a.href = 'games/' + g.id + '.html';
       a.innerHTML =
+        (g.tag ? '<div class="card__tag">' + g.tag + '</div>' : '') +
         '<div class="card__icon">' + g.icon + '</div>' +
         '<div class="card__title">' + g.title + '</div>' +
         (g.desc ? '<div class="card__desc">' + g.desc + '</div>' : '');

@@ -24,6 +24,7 @@
 ├── shared/style.css      共通スタイル
 └── games/
     ├── neko-viewer.html  3 匹を回して見る確認用ページ
+    ├── neko-omise.html   ねこのおみせ（配置と仕入れを考えるお店ゲーム）
     └── <id>.html         ゲームは 1 ファイルずつ
 ```
 
@@ -34,9 +35,10 @@
 3. **読まなくても遊べる**ようにする。ボタンには絵文字やアイコンを付け、操作は「さわる」「なぞる」だけで分かるようにする。文字だけで説明しない。
 4. **失敗しても怒られない。** 「ざんねん」「まちがい」「×」のような否定的な表現や、減点・ゲームオーバーの脅かしは無し。うまくいかなくても「もういっかい」で明るく続けられる。
 5. **個人情報を入れない。** 名前・写真・位置情報などの入力欄を作らない。外部へ送信しない。
-6. **保存は `localStorage`** だけ。キーは `haruneko.<ゲームid>` のように付ける。読み書きは `try/catch` で包み、失敗しても遊べるようにする。
-7. **iPad の縦横両対応。** 固定サイズにせず、`resize` / `orientationchange` で描画サイズを合わせる。`viewport-fit=cover` と `env(safe-area-inset-*)` で端を避ける。
-8. **ホーム画面に追加して全画面で遊べる**ようにする。全ページに次を入れる。
+6. **保存は `localStorage`** だけ。キーはゲームごとに接頭辞を付ける（例: `haruneko.viewer`、`neko-shop-save`）。読み書きは `try/catch` で包み、失敗しても遊べるようにする。
+7. **読み上げ**は Web Speech API（`speechSynthesis`、`lang = 'ja-JP'`）を使い、最初のタップの後に話す。読み上げが無くても画面の文字と絵だけで分かるようにする。設定でオン・オフできるようにする。
+8. **iPad の縦横両対応。** 固定サイズにせず、`resize` / `orientationchange` で描画サイズを合わせる。`viewport-fit=cover` と `env(safe-area-inset-*)` で端を避ける。
+9. **ホーム画面に追加して全画面で遊べる**ようにする。全ページに次を入れる。
 
 ```html
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
@@ -47,9 +49,9 @@
 <meta name="theme-color" content="#fbf6e9">
 ```
 
-9. タップ対象は 64px 以上。`touch-action` を適切に設定し、ダブルタップ拡大・長押し選択・ゴムバンドスクロールを防ぐ（`shared/style.css` の `body` と `.stage` で対応済み）。
-10. 音を出す場合は最初のタップの後に再生する（iOS の自動再生制限）。無音でも遊べるようにする。
-11. 各ゲームには「もどる」ボタン（`../index.html` へのリンク）を必ず置く。
+10. タップ対象は 64px 以上。`touch-action` を適切に設定し、ダブルタップ拡大・長押し選択・ゴムバンドスクロールを防ぐ（`shared/style.css` の `body` と `.stage` で対応済み）。
+11. 音を出す場合は最初のタップの後に再生する（iOS の自動再生制限）。無音でも遊べるようにする。
+12. 各ゲームには「もどる」ボタン（`../index.html` へのリンク）を必ず置く。
 
 ## 3 匹のネコ（見た目の決まり）
 
@@ -109,7 +111,7 @@
 ## 新しいゲームを作る手順
 
 1. `games/<id>.html` を 1 ファイルで作る（`games/neko-viewer.html` をひな形にする）。
-2. `index.html` の `GAMES` 配列に `{ id, title, desc, icon, color }` を足す。`title` と `desc` はひらがな・カタカナで分かち書き。
+2. `index.html` の `GAMES` 配列に `{ id, title, desc, icon, color, tag }` を足す。`title`・`desc`・`tag` はひらがな・カタカナで分かち書き。`tag` はゲームの種類（例:「おみせ」「みる」）。
 3. 縦・横の両方で表示を確認する。文字がすべてひらがな・カタカナか確認する。
 4. コミットして push する。
 
