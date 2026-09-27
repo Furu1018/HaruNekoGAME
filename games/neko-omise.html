@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="ねこ の おみせ">
+  <meta name="theme-color" content="#fbf6e9">
+  <title>ねこ の おみせ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Yusei+Magic&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/style.css">
+  <style>
+    [hidden] { display: none !important; }
+    #stage { position: absolute; inset: 0; border: 0; border-radius: 0; }
+
+    /* ---- 3D の うえに かさねる ふきだし など ---- */
+    #overlay { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+    .anchor { position: absolute; left: 0; top: 0; transform: translate(-50%, -100%); pointer-events: none; }
+    .place-label { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .place-name {
+      pointer-events: auto; cursor: pointer; white-space: nowrap;
+      font-size: clamp(16px, 2.2vw, 20px); line-height: 1.2;
+      padding: 3px 12px; background: #fff; border: 3px solid var(--ink); border-radius: 999px;
+      box-shadow: 2px 3px 0 var(--ink);
+    }
+    .place-name.is-target { background: #fff3a6; animation: pulse 0.9s ease-in-out infinite; }
+    .place-name.is-busy { background: #ffd0c4; }
+    .recipe {
+      pointer-events: auto; cursor: pointer; font-size: 15px; padding: 1px 10px;
+      background: #fff; border: 2px solid var(--ink); border-radius: 999px; white-space: nowrap;
+    }
+    .inv { font-size: clamp(18px, 2.6vw, 24px); line-height: 1.1; white-space: nowrap; min-height: 6px; letter-spacing: -3px; }
+    .bubble {
+      pointer-events: auto; cursor: pointer; position: relative;
+      background: #fff; border: 3px solid var(--ink); border-radius: 18px;
+      padding: 4px 12px; font-size: clamp(26px, 4vw, 34px); line-height: 1.15;
+      box-shadow: 3px 3px 0 var(--ink); white-space: nowrap;
+    }
+    .bubble::after {
+      content: ''; position: absolute; left: 50%; bottom: -12px; margin-left: -8px;
+      border: 8px solid transparent; border-top: 10px solid var(--ink); border-bottom: 0;
+    }
+    .bubble--alert { background: #ffe58a; animation: pulse 0.7s ease-in-out infinite; }
+    .bubble--jam { background: #ffb9a8; animation: pulse 0.7s ease-in-out infinite; }
+    .bubble--sleep { background: #dfe7ff; }
+    .bubble--wait { background: #eee; color: #777; }
+    .float { position: absolute; left: 0; top: 0; font-size: 28px; white-space: nowrap; pointer-events: none;
+      transform: translate(-50%, -100%); animation: floatUp 1.3s ease-out forwards; text-shadow: 0 0 4px #fff; }
+    @keyframes floatUp { to { transform: translate(-50%, -260%); opacity: 0; } }
+    @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+
+    /* ---- うえ の HUD ---- */
+    .hud-top {
+      position: absolute; z-index: 2; left: calc(10px + var(--safe-left)); right: calc(10px + var(--safe-right));
+      top: calc(8px + var(--safe-top)); display: flex; flex-direction: column; gap: 8px; align-items: center;
+      pointer-events: none;
+    }
+    .hud-top > * { pointer-events: auto; }
+    .bar { display: flex; gap: 8px; align-items: center; width: 100%; }
+    .stat { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; font-size: clamp(18px, 2.6vw, 24px);
+      background: #fff; border: 3px solid var(--ink); border-radius: 999px; white-space: nowrap; box-shadow: 2px 3px 0 var(--ink); }
+    .btn--small { min-height: 48px; min-width: 48px; padding: 4px 14px; font-size: 22px; box-shadow: 2px 3px 0 var(--ink); }
+    .clock { flex: 1; min-width: 60px; height: 22px; position: relative; background: #fff; border: 3px solid var(--ink); border-radius: 999px; }
+    .clock__fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, #ffe58a, #ffb26b); border-radius: 999px; }
+    .clock__sun { position: absolute; top: -13px; left: 0; font-size: 28px; transform: translateX(-50%); transition: left 0.3s linear; }
+    #msg {
+      max-width: 100%; padding: 4px 20px; font-size: clamp(20px, 3.4vw, 30px); text-align: center;
+      background: #fff; border: 4px solid var(--ink); border-radius: 255px 18px 225px 18px / 18px 225px 18px 255px;
+      box-shadow: 3px 4px 0 var(--ink); opacity: 0; transition: opacity 0.3s; pointer-events: none !important;
+    }
+    #msg.is-on { opacity: 1; }
+    .row2 { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; }
+    #goal { font-size: clamp(17px, 2.4vw, 22px); }
+    #goal.is-done { background: #dff5d8; }
+
+    /* ---- した の ねこ カード ---- */
+    .cats {
+      position: absolute; z-index: 2; left: calc(10px + var(--safe-left)); right: calc(10px + var(--safe-right));
+      bottom: calc(10px + var(--safe-bottom)); display: flex; gap: 10px; justify-content: center;
+    }
+    .catcard {
+      flex: 1; max-width: 240px; min-height: 84px; position: relative; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+      background: #fff; border: 4px solid var(--ink); box-shadow: 4px 5px 0 var(--ink);
+      border-radius: 20px 255px 22px 225px / 225px 22px 255px 20px;
+      font-size: clamp(18px, 2.6vw, 24px); line-height: 1.2; touch-action: manipulation;
+      transition: transform 0.1s;
+    }
+    .catcard__name { display: flex; align-items: center; gap: 6px; }
+    .catcard__dot { width: 22px; height: 22px; border: 3px solid var(--ink); border-radius: 50%; }
+    .catcard__where { font-size: 0.85em; white-space: nowrap; }
+    .catcard__stars { font-size: 0.7em; color: #d19a00; min-height: 1em; }
+    .catcard.is-active { transform: translateY(-8px); background: #fff3a6; outline: 4px dashed var(--ink); outline-offset: 3px; }
+    .catcard__z { position: absolute; top: -18px; right: -4px; font-size: 30px; }
+
+    /* ---- おおきな カード (よる / どうぐや / せってい) ---- */
+    .modal { position: absolute; inset: 0; z-index: 5; background: rgba(60, 50, 30, 0.4); display: flex;
+      align-items: center; justify-content: center; padding: calc(10px + var(--safe-top)) 12px calc(10px + var(--safe-bottom)); }
+    .modal[hidden] { display: none; }
+    .panel {
+      width: min(680px, 100%); max-height: 100%; overflow: auto; -webkit-overflow-scrolling: touch;
+      display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 18px;
+      background: #fff; border: 4px solid var(--ink); box-shadow: 6px 7px 0 var(--ink);
+      border-radius: 24px 200px 24px 200px / 200px 24px 200px 24px;
+    }
+    .panel h2 { font-size: clamp(26px, 4.4vw, 38px); text-align: center; }
+    .panel-inner { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; }
+    .big { font-size: clamp(28px, 5vw, 44px); }
+    .srow { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;
+      font-size: clamp(20px, 3vw, 28px); text-align: center; }
+    .srow .lbl { font-size: 0.75em; opacity: 0.7; }
+    .tools { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; width: 100%; }
+    .tool {
+      display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 6px; cursor: pointer;
+      background: #fff; border: 3px solid var(--ink); border-radius: 18px; box-shadow: 3px 3px 0 var(--ink);
+      font-size: 16px; text-align: center; touch-action: manipulation;
+    }
+    .tool:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+    .tool__emoji { font-size: 44px; line-height: 1.1; }
+    .tool__price { font-size: 20px; }
+    .tool__fx { font-size: 20px; }
+    .tool.is-owned { background: #dff5d8; }
+    .tool.is-poor { opacity: 0.45; }
+    .goalcard { font-size: clamp(24px, 4vw, 36px); padding: 12px 26px; background: #fff3a6; border: 4px solid var(--ink);
+      border-radius: 255px 18px 225px 18px / 18px 225px 18px 255px; text-align: center; }
+    .confetti { position: absolute; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
+    .confetti span { position: absolute; top: -40px; font-size: 32px; animation: fall 1.8s linear forwards; }
+    @keyframes fall { to { transform: translateY(110vh) rotate(360deg); } }
+
+    @media (max-width: 600px) {
+      .catcard { min-height: 72px; font-size: 16px; }
+      .stat { font-size: 16px; padding: 3px 9px; }
+    }
+  </style>
+</head>
+<body class="fullscreen">
+  <div id="stage" class="stage"></div>
+  <div id="overlay"></div>
+  <div class="confetti" id="confetti"></div>
+
+  <div class="hud-top">
+    <div class="bar">
+      <a class="btn btn--small" href="../index.html" aria-label="もどる">🏠</a>
+      <span class="stat" id="coins">🪙 0</span>
+      <span class="stat" id="level">🏪 レベル 1</span>
+      <div class="clock"><div class="clock__fill" id="clockFill"></div><div class="clock__sun" id="clockSun">🌅</div></div>
+      <span class="stat" id="dayNo">1にちめ</span>
+      <button class="btn btn--small" id="settingsBtn" type="button" aria-label="せってい">⚙️</button>
+    </div>
+    <div class="row2">
+      <div id="msg"></div>
+      <span class="stat" id="goal">🎯</span>
+      <button class="btn btn--orange" id="startBtn" type="button">☀️ はじめる</button>
+    </div>
+  </div>
+
+  <div class="cats" id="catcards"></div>
+
+  <!-- よる の まとめ -->
+  <div class="modal" id="nightModal" hidden>
+    <div class="panel" id="nightPanel"></div>
+  </div>
+
+  <!-- せってい -->
+  <div class="modal" id="settingsModal" hidden>
+    <div class="panel" id="settingsPanel">
+      <div id="settingsMain" class="panel-inner">
+        <h2>⚙️ せってい</h2>
+        <button class="btn" id="voiceBtn" type="button">🔊 よみあげ オン</button>
+        <button class="btn" id="resetBtn" type="button">🗑️ さいしょから やりなおす</button>
+        <button class="btn btn--big btn--orange" id="settingsClose" type="button">もどる</button>
+      </div>
+      <div id="settingsConfirm" class="panel-inner" hidden>
+        <h2>🗑️ ほんとうに さいしょから やりなおす？</h2>
+        <div class="row"><button class="btn btn--big" id="resetYes" type="button">はい</button><button class="btn btn--big btn--orange" id="resetNo" type="button">やめる</button></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="../shared/neko.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    // =====================================================================
+    //  データ
+    // =====================================================================
+    var DAY_SEC = 90;              // ひる の ながさ (びょう)
+    var SAVE_KEY = 'neko-shop-save';
+    var SETTING_KEY = 'neko-shop-settings';
+
+    var ITEMS = {
+      carrot: { emoji: '🥕', name: 'にんじん' },
+      fish:   { emoji: '🐟', name: 'さかな' },
+      wheat:  { emoji: '🌾', name: 'こむぎ' },
+      apple:  { emoji: '🍎', name: 'りんご' },
+      bread:  { emoji: '🍞', name: 'パン',       price: 10, need: { carrot: 2 },           work: 7,  level: 1 },
+      bento:  { emoji: '🍱', name: 'おべんとう', price: 20, need: { carrot: 1, fish: 1 },  work: 9,  level: 1 },
+      cake:   { emoji: '🍰', name: 'ケーキ',     price: 35, need: { wheat: 2, carrot: 1 }, work: 11, level: 2 },
+      juice:  { emoji: '🧃', name: 'ジュース',   price: 30, need: { apple: 2 },            work: 9,  level: 3 }
+    };
+    var MATERIALS = ['carrot', 'fish', 'wheat', 'apple'];
+    var PRODUCTS = ['bread', 'bento', 'cake', 'juice'];
+
+    // ばしょ。pos は しま の うえ の [x, z]
+    var PLACES = {
+      field:     { name: 'はたけ',       emoji: '🥕', pos: [-10, -6], level: 1, crop: 'carrot', time: 10 },
+      fishing:   { name: 'つりば',       emoji: '🎣', pos: [-14.5, 4], level: 1 },
+      workshop:  { name: 'こうぼう',     emoji: '🔨', pos: [-4, 0],   level: 1, kind: 'workshop' },
+      shop:      { name: 'おみせ',       emoji: '🏪', pos: [5, 6],    level: 1 },
+      wheat:     { name: 'こむぎばたけ', emoji: '🌾', pos: [1, -10],  level: 2, crop: 'wheat', time: 12 },
+      orchard:   { name: 'かじゅえん',   emoji: '🍎', pos: [11, -7],  level: 3, crop: 'apple', time: 12 },
+      workshop2: { name: 'こうぼう 2',   emoji: '🔨', pos: [11, 0],   level: 2, kind: 'workshop', tool: 'workshop2' }
+    };
+    var PLACE_IDS = Object.keys(PLACES);
+    var FAVORITE = { orange: ['fishing'], blue: ['workshop', 'workshop2'], yellow: [] };
+
+    var TOOLS = [
+      { id: 'seed',      name: 'はやく そだつ たね',  emoji: '🌱', price: 30,  fx: '🥕⏫' },
+      { id: 'net',       name: 'おおきな あみ',       emoji: '🥅', price: 40,  fx: '🐟🐟' },
+      { id: 'knife',     name: 'べんりな ほうちょう', emoji: '🔪', price: 50,  fx: '🔨⏫' },
+      { id: 'sign',      name: 'かんばん',            emoji: '🪧', price: 60,  fx: '🧑⏫' },
+      { id: 'cart',      name: 'だいしゃ',            emoji: '🛒', price: 80,  fx: '📦⏫' },
+      { id: 'workshop2', name: '2つめの こうぼう',    emoji: '🏠', price: 150, fx: '🔨🔨', level: 2 }
+    ];
+    var LEVEL_SALES = [0, 0, 150, 400];   // レベル n に なる るいけい うりあげ
+
+    var GOALS = [
+      { type: 'sell', item: 'bread', n: 2 },
+      { type: 'coins', n: 50 },
+      { type: 'sell', item: 'bento', n: 3 },
+      { type: 'catch', n: 6 },
+      { type: 'coins', n: 100 },
+      { type: 'sell', item: 'bento', n: 5 },
+      { type: 'sell', item: 'cake', n: 2, level: 2 },
+      { type: 'coins', n: 200 },
+      { type: 'sell', item: 'cake', n: 4, level: 2 },
+      { type: 'sell', item: 'juice', n: 2, level: 3 },
+      { type: 'coins', n: 300 },
+      { type: 'sell', item: 'juice', n: 4, level: 3 },
+      { type: 'coins', n: 500 }
+    ];
+
+    // =====================================================================
+    //  ほぞん
+    // =====================================================================
+    function loadJSON(key) { try { return JSON.parse(localStorage.getItem(key)) || null; } catch (e) { return null; } }
+    function saveJSON(key, o) { try { localStorage.setItem(key, JSON.stringify(o)); } catch (e) {} }
+
+    var settings = loadJSON(SETTING_KEY) || { voice: true };
+
+    var state = {
+      day: 1, coins: 0, level: 1, totalSales: 0,
+      tools: {}, inv: { carrot: 2, fish: 1, wheat: 0, apple: 0 }, stock: { bread: 0, bento: 0, cake: 0, juice: 0 },
+      exp: { orange: {}, blue: {}, yellow: {} },
+      assign: { orange: null, blue: null, yellow: null },
+      goalIdx: 0
+    };
+    (function restore() {
+      var s = loadJSON(SAVE_KEY);
+      if (!s || !s.v) return;
+      ['day', 'coins', 'level', 'totalSales', 'goalIdx'].forEach(function (k) { if (typeof s[k] === 'number') state[k] = s[k]; });
+      ['tools', 'inv', 'stock', 'exp', 'assign'].forEach(function (k) { if (s[k] && typeof s[k] === 'object') state[k] = s[k]; });
+      MATERIALS.forEach(function (m) { state.inv[m] = state.inv[m] || 0; });
+      PRODUCTS.forEach(function (p) { state.stock[p] = state.stock[p] || 0; });
+      ['orange', 'blue', 'yellow'].forEach(function (c) { state.exp[c] = state.exp[c] || {}; });
+    })();
+    function save() {
+      saveJSON(SAVE_KEY, {
+        v: 1, day: state.day, coins: state.coins, level: state.level, totalSales: state.totalSales,
+        tools: state.tools, inv: state.inv, stock: state.stock, exp: state.exp, assign: state.assign, goalIdx: state.goalIdx
+      });
+    }
+
+    // =====================================================================
+    //  よみあげ と メッセージ
+    // =====================================================================
+    var msgEl = document.getElementById('msg');
+    var msgTimer = 0, speechReady = false, lastSpoken = '';
+    function say(text, keep) {
+      msgEl.textContent = text;
+      msgEl.classList.add('is-on');
+      clearTimeout(msgTimer);
+      if (!keep) msgTimer = setTimeout(function () { msgEl.classList.remove('is-on'); }, 4500);
+      lastSpoken = text;
+      speak(text);
+    }
+    function speak(text) {
+      if (!settings.voice || !speechReady || !window.speechSynthesis) return;
+      try {
+        speechSynthesis.cancel();
+        var u = new SpeechSynthesisUtterance(text.replace(/ /g, ''));
+        u.lang = 'ja-JP';
+        u.rate = 0.95;
+        var voices = speechSynthesis.getVoices();
+        for (var i = 0; i < voices.length; i++) { if (/^ja/i.test(voices[i].lang)) { u.voice = voices[i]; break; } }
+        speechSynthesis.speak(u);
+      } catch (e) {}
+    }
+    // iPad は さいしょの タップ の あと で ないと しゃべれない
+    window.addEventListener('pointerdown', function () {
+      if (speechReady) return;
+      speechReady = true;
+      if (msgEl.classList.contains('is-on')) speak(lastSpoken);
+    }, true);
+
+    // =====================================================================
+    //  3D の ぶたい
+    // =====================================================================
+    var stageEl = document.getElementById('stage');
+    var stage = NEKO.createStage(stageEl, { fov: 40, onResize: function (w, h, s) { fit(w, h, s); } });
+    var scene = stage.scene, camera = stage.camera;
+    var ISLAND_R = 17, GROUND_Y = 0.75;
+
+    function fit(w, h, s) {
+      var cam = s.camera;
+      var top = w > h ? 180 : 210, bottom = 115;   // うえ と した の HUD の ぶん (px)
+      var hh = Math.max(200, h - top - bottom);
+      var aspect = w / hh;
+      var tanHalf = Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2);
+      var distW = (46 * 1.08 / 2) / (tanHalf * aspect);
+      var distH = (30 * 1.08 / 2) / tanHalf;
+      var dist = Math.max(distW, distH);
+      var tilt = THREE.MathUtils.degToRad(52);
+      cam.position.set(0, dist * Math.sin(tilt), 1 + dist * Math.cos(tilt));
+      cam.lookAt(0, 0, 1);
+      // HUD の あいだ の まんなか に しま が くる ように ずらす
+      cam.setViewOffset(w, h, 0, -(top - bottom) / 2, w, h);
+    }
+
+    // ---- ふちどり つき の かんたんな かたち ----
+    var toonCache = {};
+    function mat(color) { return toonCache[color] || (toonCache[color] = new THREE.MeshToonMaterial({ color: color })); }
+    var hullMat = new THREE.MeshBasicMaterial({ color: NEKO.INK, side: THREE.BackSide });
+    var inkMat = new THREE.MeshBasicMaterial({ color: NEKO.INK });
+    var T = 0.13;
+    function outlined(geom, color, sx, sy, sz) {
+      var g = new THREE.Group();
+      g.add(new THREE.Mesh(geom, mat(color)));
+      var h = new THREE.Mesh(geom, hullMat);
+      h.scale.set(sx, sy, sz);
+      g.add(h);
+      return g;
+    }
+    function box(w, h, d, color) { return outlined(new THREE.BoxGeometry(w, h, d), color, (w + 2 * T) / w, (h + 2 * T) / h, (d + 2 * T) / d); }
+    function cyl(r, h, color, segs) { return outlined(new THREE.CylinderGeometry(r, r, h, segs || 24), color, (r + T) / r, (h + 2 * T) / h, (r + T) / r); }
+    function cone(r, h, color, segs) { return outlined(new THREE.ConeGeometry(r, h, segs || 16), color, (r + T) / r, (h + 2 * T) / h, (r + T) / r); }
+    function ball(r, color) { return outlined(new THREE.SphereGeometry(r, 16, 12), color, (r + T) / r, (r + T) / r, (r + T) / r); }
+    function at(obj, x, y, z) { obj.position.set(x, y, z); return obj; }
+
+    // ---- しま と うみ ----
+    var water = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshBasicMaterial({ color: 0xa9d9f2 }));
+    water.rotation.x = -Math.PI / 2;
+    water.position.y = -0.6;
+    scene.add(water);
+    scene.add(at(cyl(ISLAND_R, 1.5, 0x9ed47f, 56), 0, 0, 0));
+    scene.add(at(cyl(ISLAND_R + 1.6, 0.5, 0xf1dc9a, 56), 0, -0.55, 0)); // すなはま
+    // みち
+    scene.add(at(box(2.2, 0.08, 16, 0xe7cf95), 0.5, GROUND_Y + 0.02, 0));
+    scene.add(at(box(18, 0.08, 2.2, 0xe7cf95), -3, GROUND_Y + 0.02, 3.5));
+
+    // ---- ばしょ の たてもの ----
+    var placeObjs = {};   // id -> { group, spot:[x,y,z], labelPos: Vector3, crops:[], setGrowth }
+    function house(color, roofColor) {
+      var g = new THREE.Group();
+      g.add(at(box(4.6, 3, 4, color), 0, 1.5, 0));
+      var roof = cone(3.7, 2.1, roofColor, 4);
+      roof.rotation.y = Math.PI / 4;
+      g.add(at(roof, 0, 4.0, 0));
+      g.add(at(box(1.2, 1.7, 0.2, 0x8b5a2b), 0, 0.85, 2.05)); // ドア
+      return g;
+    }
+    function buildPlace(id) {
+      var p = PLACES[id];
+      var g = new THREE.Group();
+      var x = p.pos[0], z = p.pos[1];
+      var obj = { group: g, spot: [x, GROUND_Y, z + 3.4], labelH: 4.8, crops: [] };
+      if (p.crop) {
+        var soil = p.crop === 'wheat' ? 0xcaa45c : p.crop === 'apple' ? 0x8fcf6f : 0xa4714a;
+        g.add(at(box(6.5, 0.5, 4.2, soil), 0, 0.25, 0));
+        for (var i = 0; i < 3; i++) {
+          var c = new THREE.Group();
+          if (p.crop === 'carrot') {
+            var root = cone(0.45, 1.3, 0xf39a2b, 12); root.rotation.x = Math.PI; c.add(at(root, 0, 0.55, 0));
+            c.add(at(ball(0.42, 0x5fbf4a), 0, 1.35, 0));
+          } else if (p.crop === 'wheat') {
+            c.add(at(box(0.16, 1.4, 0.16, 0x9a7a3a), 0, 0.7, 0));
+            c.add(at(cone(0.35, 1.1, 0xe6c21c, 8), 0, 1.7, 0));
+          } else {
+            c.add(at(cyl(0.3, 1.6, 0x8b5a2b, 10), 0, 0.8, 0));
+            c.add(at(ball(1.15, 0x6cbf5a), 0, 2.2, 0));
+            c.add(at(ball(0.3, 0xe2453a), 0.5, 2.0, 0.9));
+            c.add(at(ball(0.3, 0xe2453a), -0.6, 2.5, 0.8));
+          }
+          at(c, -2 + i * 2, 0.5, 0);
+          g.add(c);
+          obj.crops.push(c);
+        }
+        obj.labelH = p.crop === 'apple' ? 5.2 : 3.6;
+      } else if (id === 'fishing') {
+        g.add(at(box(6, 0.5, 3.2, 0xb98a5a), -1.5, 0.4, 0));   // さんばし
+        g.add(at(box(0.5, 0.5, 3.2, 0x8b5a2b), 1.3, 0.4, 0));
+        var rod = at(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 4, 6), inkMat), -3.8, 2.2, 0.8);
+        rod.rotation.z = 0.7;
+        g.add(rod);
+        obj.spot = [x - 1.2, GROUND_Y + 0.4, z];
+        obj.labelH = 3.4;
+      } else if (p.kind === 'workshop') {
+        g.add(house(id === 'workshop' ? 0xe7c9a1 : 0xcfe0f7, id === 'workshop' ? 0xd35b4a : 0x8a6bd1));
+        obj.labelH = 5.6;
+      } else if (id === 'shop') {
+        g.add(house(0xfbe28a, 0x3f8fd1));
+        g.add(at(box(6, 0.3, 1.8, 0xf07b7b), 0, 3.05, 2.6));   // ひさし
+        g.add(at(box(5.2, 1.1, 0.8, 0xe0b76a), 0, 0.55, 2.9));  // カウンター
+        obj.labelH = 5.6;
+      }
+      at(g, x, GROUND_Y, z);
+      g.userData.placeId = id;
+      scene.add(g);
+      obj.labelPos = new THREE.Vector3(x, GROUND_Y + obj.labelH, z);
+      placeObjs[id] = obj;
+    }
+    PLACE_IDS.forEach(buildPlace);
+
+    function placeOpen(id) {
+      var p = PLACES[id];
+      return state.level >= p.level && (!p.tool || !!state.tools[p.tool]);
+    }
+    function refreshPlaces() {
+      PLACE_IDS.forEach(function (id) { placeObjs[id].group.visible = placeOpen(id); });
+    }
+
+    // ---- ねこ ----
+    var HOME = [[-9, 8], [-4.5, 9.5], [0, 10.5]];
+    var cats = [], catById = {};
+    NEKO.CATS.forEach(function (c, i) {
+      var neko = NEKO.create(c);
+      neko.scale.setScalar(0.5);
+      var cat = { id: c.id, def: c, neko: neko, place: null, asleep: false, sleepT: 0, sleepCheck: 10 + i * 5,
+        pos: new THREE.Vector3(HOME[i][0], GROUND_Y, HOME[i][1]), target: null, exp: state.exp[c.id] };
+      neko.position.set(cat.pos.x, catBaseY(GROUND_Y), cat.pos.z);
+      neko.userData.baseY = catBaseY(GROUND_Y);
+      neko.userData.catId = c.id;
+      scene.add(neko);
+      cats.push(cat);
+      catById[c.id] = cat;
+    });
+    function catBaseY(groundY) { return groundY - NEKO.SIZE.floorY * 0.5; }
+    function catAt(placeId) {
+      for (var i = 0; i < cats.length; i++) if (cats[i].place === placeId) return cats[i];
+      return null;
+    }
+    function catLevel(cat, placeId) { return Math.min(5, Math.floor((cat.exp[placeId] || 0) / 45)); }
+    function catSpeed(cat, placeId) {
+      if (!cat || cat.asleep) return 0;
+      var s = 1;
+      if (FAVORITE[cat.id].indexOf(placeId) >= 0) s *= 1.5;
+      s *= 1 + 0.1 * catLevel(cat, placeId);
+      return s;
+    }
+    function gainExp(cat, placeId, dt) {
+      var before = catLevel(cat, placeId);
+      cat.exp[placeId] = (cat.exp[placeId] || 0) + dt;
+      if (catLevel(cat, placeId) > before) {
+        floatText(cat.neko.position, '⭐ レベル アップ');
+        renderCatCards();
+      }
+    }
+    function moveCat(cat, placeId) {
+      cat.place = placeId;
+      state.assign[cat.id] = placeId;
+      var s = placeId ? placeObjs[placeId].spot : HOME[cats.indexOf(cat)].concat();
+      if (!placeId) s = [s[0], GROUND_Y, s[1]];
+      cat.target = new THREE.Vector3(s[0], s[1], s[2]);
+      cat.neko.userData.baseY = catBaseY(s[1]);
+    }
+    function wake(cat) {
+      cat.asleep = false;
+      cat.sleepT = 0;
+      cat.sleepCheck = 20 + Math.random() * 15;
+      renderCatCards();
+    }
+
+    // ---- おきゃくさん ----
+    var customers = [];
+    var QUEUE = [[10, 8.2], [12.5, 6.5], [14.5, 4.5]];
+    var CUST_COLORS = [0xf7a1c4, 0x9bd1f5, 0xb8e394, 0xf9d77e, 0xd7b6f2];
+    function makeCustomer(color) {
+      var g = new THREE.Group();
+      g.add(at(cyl(0.7, 1.3, color, 14), 0, 0.65, 0));
+      g.add(at(ball(0.62, 0xffe2c2), 0, 1.85, 0));
+      g.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), inkMat), -0.22, 1.95, 0.55));
+      g.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), inkMat), 0.22, 1.95, 0.55));
+      return g;
+    }
+
+    // =====================================================================
+    //  ゲーム の じょうたい
+    // =====================================================================
+    var phase = 'morning';      // morning | day | night
+    var dayT = 0;
+    var selected = null;        // えらんでいる ねこ
+    var today = null;
+    var run = {};
+    var goal = null;
+    var warnT = { workshop: 0, shop: 0 };
+    var eveningSaid = false;
+
+    function resetRun() {
+      run = {
+        field: { growth: 0, ripe: false, ripeT: 0 },
+        wheat: { growth: 0, ripe: false, ripeT: 0 },
+        orchard: { growth: 0, ripe: false, ripeT: 0 },
+        fishing: { bite: false, biteT: 0, timer: 6 },
+        workshop: { making: null, progress: 0, recipe: 'auto', done: false },
+        workshop2: { making: null, progress: 0, recipe: 'auto', done: false },
+        shop: { spawnT: 3 }
+      };
+    }
+    function resetToday() {
+      today = { earned: 0, sold: {}, caught: 0, harvested: 0, goalDone: false };
+    }
+    function matCap() { return state.tools.cart ? 12 : 6; }
+    function stockCap() { return state.tools.cart ? 8 : 4; }
+    function matTotal() { return MATERIALS.reduce(function (a, m) { return a + state.inv[m]; }, 0); }
+    function stockTotal() { return PRODUCTS.reduce(function (a, p) { return a + state.stock[p]; }, 0); }
+
+    // ---- もくひょう ----
+    function pickGoal() {
+      var idx = state.goalIdx, tries = 0;
+      while (tries < GOALS.length) {
+        var g = GOALS[idx % GOALS.length];
+        if (!g.level || g.level <= state.level) { goal = g; state.goalIdx = idx + 1; return; }
+        idx++; tries++;
+      }
+      goal = GOALS[1];
+    }
+    function goalText(g) {
+      if (g.type === 'sell') return ITEMS[g.item].emoji + ' ' + ITEMS[g.item].name + 'を ' + g.n + 'こ うろう';
+      if (g.type === 'catch') return '🐟 さかなを ' + g.n + 'ひき つろう';
+      return '🪙 コインを ' + g.n + 'まい ためよう';
+    }
+    function goalProgress(g) {
+      if (g.type === 'sell') return today.sold[g.item] || 0;
+      if (g.type === 'catch') return today.caught;
+      return state.coins;
+    }
+    function checkGoal() {
+      if (!goal || today.goalDone) return;
+      if (goalProgress(goal) >= goal.n) {
+        today.goalDone = true;
+        say('🎉 もくひょう たっせい！');
+        confetti();
+      }
+      renderGoal();
+    }
+
+    // =====================================================================
+    //  1にち の ながれ
+    // =====================================================================
+    var startBtn = document.getElementById('startBtn');
+    function startMorning() {
+      phase = 'morning';
+      dayT = 0;
+      eveningSaid = false;
+      resetRun();
+      resetToday();
+      pickGoal();
+      customers.forEach(function (c) { scene.remove(c.mesh); });
+      customers = [];
+      cats.forEach(function (c) { if (c.asleep) wake(c); if (c.place && !placeOpen(c.place)) c.place = null; moveCat(c, c.place); });
+      refreshPlaces();
+      startBtn.hidden = false;
+      renderAll();
+      say('🌅 あさだよ。だれを どこに おく？', true);
+      save();
+    }
+    function startDay() {
+      phase = 'day';
+      dayT = 0;
+      selected = null;
+      startBtn.hidden = true;
+      renderAll();
+      say('☀️ ひるだよ。おきゃくさん が くるよ');
+    }
+    function startNight() {
+      phase = 'night';
+      selected = null;
+      customers.forEach(function (c) { scene.remove(c.mesh); });
+      customers = [];
+      var newLevel = state.level;
+      while (newLevel < 3 && state.totalSales >= LEVEL_SALES[newLevel + 1]) newLevel++;
+      var leveled = newLevel > state.level;
+      state.level = newLevel;
+      refreshPlaces();
+      renderAll();
+      say('🌙 よるだよ。きょうの まとめ を みよう');
+      showNight(1, leveled);
+      save();
+    }
+    startBtn.addEventListener('click', function () { if (phase === 'morning') startDay(); });
+
+    // =====================================================================
+    //  シミュレーション
+    // =====================================================================
+    function simulate(dt) {
+      // きいろ は たまに ねる
+      var y = catById.yellow;
+      if (y.place && !y.asleep) {
+        y.sleepCheck -= dt;
+        if (y.sleepCheck <= 0) {
+          y.sleepCheck = 20 + Math.random() * 15;
+          if (Math.random() < 0.5) { y.asleep = true; y.sleepT = 12; say('💤 きいろ が ねちゃった。さわって おこそう'); renderCatCards(); }
+        }
+      }
+      if (y.asleep) { y.sleepT -= dt; if (y.sleepT <= 0) wake(y); }
+
+      // はたけ
+      ['field', 'wheat', 'orchard'].forEach(function (id) {
+        if (!placeOpen(id)) return;
+        var r = run[id], p = PLACES[id], cat = catAt(id);
+        var sp = cat ? catSpeed(cat, id) : 0.3;
+        if (state.tools.seed) sp *= 1.4;
+        if (!r.ripe) {
+          r.growth = Math.min(1, r.growth + dt * sp / p.time);
+          if (r.growth >= 1) { r.ripe = true; r.ripeT = 0; }
+        } else {
+          r.ripeT += dt;
+          if (cat && !cat.asleep && r.ripeT >= 4) harvest(id);
+        }
+        if (cat && !cat.asleep) gainExp(cat, id, dt);
+      });
+
+      // つりば
+      var f = run.fishing, fc = catAt('fishing');
+      if (fc && !fc.asleep) {
+        gainExp(fc, 'fishing', dt);
+        if (!f.bite) {
+          f.timer -= dt * catSpeed(fc, 'fishing');
+          if (f.timer <= 0) { f.bite = true; f.biteT = 0; }
+        } else {
+          f.biteT += dt;
+          if (f.biteT >= 3) catchFish();
+        }
+      }
+
+      // こうぼう
+      ['workshop', 'workshop2'].forEach(function (id) {
+        if (!placeOpen(id)) return;
+        var r = run[id], cat = catAt(id);
+        if (r.done) { finishProduct(id); return; }
+        if (!r.making) {
+          var rec = chooseRecipe(id);
+          if (rec) {
+            r.making = rec; r.progress = 0;
+            Object.keys(ITEMS[rec].need).forEach(function (m) { state.inv[m] -= ITEMS[rec].need[m]; });
+          }
+        }
+        if (r.making && cat && !cat.asleep) {
+          r.progress += dt * catSpeed(cat, id) * (state.tools.knife ? 1.4 : 1);
+          gainExp(cat, id, dt);
+          if (r.progress >= ITEMS[r.making].work) finishProduct(id);
+        }
+      });
+
+      // おみせ
+      if (waitingCustomers().length < 3) {
+        run.shop.spawnT -= dt;
+        if (run.shop.spawnT <= 0) {
+          spawnCustomer();
+          run.shop.spawnT = (state.tools.sign ? 6 : 9) * (0.8 + Math.random() * 0.4);
+        }
+      }
+      var sc = catAt('shop');
+      var queue = waitingCustomers();
+      queue.forEach(function (c, i) {
+        if (c.state === 'walk') return;
+        if (i !== 0) return;   // せんとう の ひと だけ
+        if (state.stock[c.want] > 0) {
+          if (sc && !sc.asleep) {
+            c.serveT += dt * catSpeed(sc, 'shop');
+            gainExp(sc, 'shop', dt);
+            if (c.serveT >= 3) sell(c);
+          }
+        } else {
+          c.waitT += dt;
+          if (c.waitT >= 8) leaveCustomer(c);
+        }
+      });
+
+      // つまり の おしらせ
+      warnT.workshop -= dt; warnT.shop -= dt;
+      if (matTotal() >= matCap() && warnT.workshop <= 0) { warnT.workshop = 25; say('❗ こうぼうが いそがしいよ'); }
+      if (stockTotal() >= stockCap() && warnT.shop <= 0) { warnT.shop = 25; say('❗ おみせが いっぱいだよ。うって あげて'); }
+
+      if (!eveningSaid && dayT > DAY_SEC * 0.75) { eveningSaid = true; say('🌇 そろそろ ゆうがた だよ'); }
+    }
+
+    function harvest(id) {
+      var r = run[id], p = PLACES[id];
+      if (!r.ripe) return false;
+      if (matTotal() >= matCap()) { if (warnT.workshop <= 0) { warnT.workshop = 25; say('❗ こうぼうが いそがしいよ'); } return false; }
+      state.inv[p.crop] += 1;
+      today.harvested++;
+      r.ripe = false; r.growth = 0; r.ripeT = 0;
+      floatText(placeObjs[id].labelPos, ITEMS[p.crop].emoji + ' +1');
+      return true;
+    }
+    function catchFish() {
+      var f = run.fishing;
+      if (!f.bite) return false;
+      if (matTotal() >= matCap()) { if (warnT.workshop <= 0) { warnT.workshop = 25; say('❗ こうぼうが いそがしいよ'); } return false; }
+      var n = state.tools.net && Math.random() < 0.35 ? 2 : 1;
+      n = Math.min(n, matCap() - matTotal());
+      state.inv.fish += n;
+      today.caught += n;
+      f.bite = false; f.biteT = 0;
+      f.timer = 9 * (0.7 + Math.random() * 0.6);
+      floatText(placeObjs.fishing.labelPos, '🐟 +' + n);
+      checkGoal();
+      return true;
+    }
+    function craftable(item) {
+      var need = ITEMS[item].need;
+      if (ITEMS[item].level > state.level) return false;
+      return Object.keys(need).every(function (m) { return state.inv[m] >= need[m]; });
+    }
+    function chooseRecipe(id) {
+      if (stockTotal() >= stockCap()) return null;
+      var r = run[id];
+      if (r.recipe !== 'auto') return craftable(r.recipe) ? r.recipe : null;
+      var cands = PRODUCTS.filter(craftable);
+      if (!cands.length) return null;
+      for (var i = 0; i < customers.length; i++) {
+        var w = customers[i].want;
+        if (state.stock[w] === 0 && cands.indexOf(w) >= 0) return w;
+      }
+      cands.sort(function (a, b) { return ITEMS[b].price - ITEMS[a].price; });
+      return cands[0];
+    }
+    function finishProduct(id) {
+      var r = run[id];
+      if (!r.making) return;
+      if (stockTotal() >= stockCap()) { r.done = true; r.progress = ITEMS[r.making].work; return; }
+      state.stock[r.making] += 1;
+      floatText(placeObjs[id].labelPos, ITEMS[r.making].emoji + ' できた');
+      r.making = null; r.progress = 0; r.done = false;
+    }
+    function spawnCustomer() {
+      var wants = PRODUCTS.filter(function (p) { return ITEMS[p].level <= state.level; });
+      var weights = { bread: 3, bento: 3, cake: 2, juice: 2 };
+      var total = wants.reduce(function (a, w) { return a + weights[w]; }, 0), pick = Math.random() * total, want = wants[0];
+      for (var i = 0; i < wants.length; i++) { pick -= weights[wants[i]]; if (pick <= 0) { want = wants[i]; break; } }
+      var mesh = makeCustomer(CUST_COLORS[Math.floor(Math.random() * CUST_COLORS.length)]);
+      at(mesh, 21, GROUND_Y, 1);
+      scene.add(mesh);
+      customers.push({ want: want, mesh: mesh, state: 'walk', serveT: 0, waitT: 0, pos: mesh.position });
+    }
+    function waitingCustomers() { return customers.filter(function (c) { return c.state !== 'leave'; }); }
+    function queueSpot(i) { var q = QUEUE[Math.min(i, QUEUE.length - 1)]; return new THREE.Vector3(q[0], GROUND_Y, q[1]); }
+    function sell(c) {
+      if (state.stock[c.want] <= 0) return false;
+      var price = ITEMS[c.want].price;
+      var sc = catAt('shop');
+      if (sc && sc.id === 'yellow' && !sc.asleep) price = Math.round(price * 1.2);
+      state.stock[c.want] -= 1;
+      state.coins += price;
+      state.totalSales += price;
+      today.earned += price;
+      today.sold[c.want] = (today.sold[c.want] || 0) + 1;
+      floatText(c.mesh.position.clone().add(new THREE.Vector3(0, 3.5, 0)), '🪙 +' + price);
+      c.state = 'leave';
+      c.happy = true;
+      renderHud();
+      checkGoal();
+      return true;
+    }
+    function leaveCustomer(c) { c.state = 'leave'; }
+
+    // =====================================================================
+    //  タップ
+    // =====================================================================
+    function selectCat(cat) {
+      if (cat.asleep) { wake(cat); floatText(cat.neko.position, '😊 おはよう'); return; }
+      if (phase === 'night') return;
+      selected = (selected === cat) ? null : cat;
+      if (selected) say('👆 ' + cat.def.name + ' を どこに おく？', phase === 'morning');
+      else if (phase === 'morning') say('🌅 あさだよ。だれを どこに おく？', true);
+      renderCatCards();
+      renderPlaceLabels();
+    }
+    function tapPlace(id) {
+      if (phase === 'night' || !placeOpen(id)) return;
+      if (selected) {
+        var other = catAt(id);
+        if (other && other !== selected) moveCat(other, selected.place); // いれかえ
+        moveCat(selected, id);
+        var name = selected.def.name;
+        selected = null;
+        var allSet = cats.every(function (c) { return c.place; });
+        if (phase === 'morning' && allSet) say('✨ いいね！ はじめる を おしてね', true);
+        else say('👍 ' + name + ' は ' + PLACES[id].name + ' だね', phase === 'morning');
+        renderCatCards();
+        renderPlaceLabels();
+        save();
+        return;
+      }
+      if (phase !== 'day') return;
+      // てつだう
+      if (PLACES[id].crop) harvest(id);
+      else if (id === 'fishing') catchFish();
+      else if (PLACES[id].kind === 'workshop') {
+        var r = run[id];
+        if (r.done) finishProduct(id);
+        else if (r.making) { r.progress += 1.2; if (r.progress >= ITEMS[r.making].work) finishProduct(id); }
+      } else if (id === 'shop') {
+        var c = waitingCustomers()[0];
+        if (c && c.state === 'wait') sell(c);
+      }
+    }
+    function cycleRecipe(id) {
+      var r = run[id];
+      var list = ['auto'].concat(PRODUCTS.filter(function (p) { return ITEMS[p].level <= state.level; }));
+      r.recipe = list[(list.indexOf(r.recipe) + 1) % list.length];
+      renderPlaceLabels();
+    }
+
+    var raycaster = new THREE.Raycaster();
+    stageEl.addEventListener('pointerdown', function (e) {
+      if (phase === 'night') return;
+      var hit = stage.pick(e.clientX, e.clientY, cats.map(function (c) { return c.neko; }));
+      if (hit) { selectCat(catById[hit.userData.catId]); return; }
+      var rect = stage.renderer.domElement.getBoundingClientRect();
+      var v = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+      raycaster.setFromCamera(v, camera);
+      var groups = PLACE_IDS.filter(placeOpen).map(function (id) { return placeObjs[id].group; });
+      var hits = raycaster.intersectObjects(groups, true);
+      if (hits.length) {
+        var o = hits[0].object;
+        while (o && !o.userData.placeId) o = o.parent;
+        if (o) tapPlace(o.userData.placeId);
+      }
+    });
+
+    // =====================================================================
+    //  がめん の こうしん
+    // =====================================================================
+    var overlay = document.getElementById('overlay');
+    var labelEls = {}, custEls = [], catBubbleEls = {};
+    PLACE_IDS.forEach(function (id) {
+      var el = document.createElement('div');
+      el.className = 'anchor place-label';
+      el.innerHTML = '<div class="bubble" hidden></div><div class="inv"></div><div class="place-name"></div><div class="recipe" hidden></div>';
+      el.querySelector('.place-name').addEventListener('pointerdown', function (ev) { ev.stopPropagation(); tapPlace(id); });
+      el.querySelector('.bubble').addEventListener('pointerdown', function (ev) { ev.stopPropagation(); tapPlace(id); });
+      el.querySelector('.recipe').addEventListener('pointerdown', function (ev) { ev.stopPropagation(); cycleRecipe(id); });
+      overlay.appendChild(el);
+      labelEls[id] = el;
+    });
+    cats.forEach(function (c) {
+      var el = document.createElement('div');
+      el.className = 'anchor';
+      el.innerHTML = '<div class="bubble bubble--sleep">💤</div>';
+      el.hidden = true;
+      el.querySelector('.bubble').addEventListener('pointerdown', function (ev) { ev.stopPropagation(); selectCat(c); });
+      overlay.appendChild(el);
+      catBubbleEls[c.id] = el;
+    });
+
+    var tmpV = new THREE.Vector3();
+    function toScreen(v3, el) {
+      tmpV.copy(v3).project(camera);
+      var w = stageEl.clientWidth, h = stageEl.clientHeight;
+      el.style.transform = 'translate(' + ((tmpV.x + 1) / 2 * w).toFixed(1) + 'px,' + ((1 - tmpV.y) / 2 * h).toFixed(1) + 'px) translate(-50%,-100%)';
+    }
+    function repeatEmoji(emoji, n) {
+      if (n <= 0) return '';
+      if (n <= 4) { var s = ''; for (var i = 0; i < n; i++) s += emoji; return s; }
+      return emoji + '<span style="letter-spacing:0;font-size:0.8em">×' + n + '</span>';
+    }
+    function renderPlaceLabels() {
+      PLACE_IDS.forEach(function (id) {
+        var el = labelEls[id], p = PLACES[id];
+        if (!placeOpen(id)) { el.hidden = true; return; }
+        el.hidden = false;
+        var name = el.querySelector('.place-name'), inv = el.querySelector('.inv'), bub = el.querySelector('.bubble'), rec = el.querySelector('.recipe');
+        name.textContent = p.emoji + ' ' + p.name;
+        name.classList.toggle('is-target', !!selected);
+        var invHtml = '', bubText = '', bubClass = 'bubble';
+        var r = run[id];
+        if (p.crop) {
+          if (r.ripe) { bubText = '❗ ' + ITEMS[p.crop].emoji; bubClass += ' bubble--alert'; }
+          invHtml = '<span style="letter-spacing:0;font-size:0.7em">' + ITEMS[p.crop].emoji + ' ' + Math.round(r.growth * 100) + '%</span>';
+        } else if (id === 'fishing') {
+          if (r.bite) { bubText = '❗ 🐟'; bubClass += ' bubble--alert'; }
+        } else if (p.kind === 'workshop') {
+          invHtml = MATERIALS.map(function (m) { return repeatEmoji(ITEMS[m].emoji, state.inv[m]); }).join('');
+          if (r.making) invHtml += '<span style="letter-spacing:0;font-size:0.7em"> ➡ ' + ITEMS[r.making].emoji + ' ' + Math.round(Math.min(1, r.progress / ITEMS[r.making].work) * 100) + '%</span>';
+          if (matTotal() >= matCap() || r.done) { bubText = '❗❓'; bubClass += ' bubble--jam'; }
+          name.classList.toggle('is-busy', matTotal() >= matCap());
+          rec.hidden = phase === 'night';
+          rec.textContent = r.recipe === 'auto' ? 'おまかせ' : 'つくる: ' + ITEMS[r.recipe].emoji;
+        } else if (id === 'shop') {
+          invHtml = PRODUCTS.map(function (pr) { return repeatEmoji(ITEMS[pr].emoji, state.stock[pr]); }).join('');
+          if (stockTotal() >= stockCap()) { bubText = '❗❓'; bubClass += ' bubble--jam'; }
+        }
+        inv.innerHTML = invHtml;
+        bub.hidden = !bubText;
+        bub.textContent = bubText;
+        bub.className = bubClass;
+      });
+    }
+    function renderCustomers() {
+      while (custEls.length < customers.length) {
+        var el = document.createElement('div');
+        el.className = 'anchor';
+        el.innerHTML = '<div class="bubble"></div>';
+        (function (el) {
+          el.querySelector('.bubble').addEventListener('pointerdown', function (ev) {
+            ev.stopPropagation();
+            var c = el._cust;
+            if (c && c.state === 'wait') sell(c);
+          });
+        })(el);
+        overlay.appendChild(el);
+        custEls.push(el);
+      }
+      var queue = waitingCustomers();
+      custEls.forEach(function (el, i) {
+        var c = queue[i];
+        el._cust = c;
+        if (!c || phase !== 'day') { el.hidden = true; return; }
+        el.hidden = false;
+        var b = el.querySelector('.bubble');
+        var noStock = c.state === 'wait' && i === 0 && state.stock[c.want] === 0 && c.waitT > 1.5;
+        b.textContent = noStock ? ITEMS[c.want].emoji + ' …' : ITEMS[c.want].emoji;
+        b.className = 'bubble' + (noStock ? ' bubble--wait' : '');
+        toScreen(c.mesh.position.clone().add(new THREE.Vector3(0, 3.2, 0)), el);
+      });
+    }
+    function updateOverlayPositions() {
+      PLACE_IDS.forEach(function (id) { if (!labelEls[id].hidden) toScreen(placeObjs[id].labelPos, labelEls[id]); });
+      cats.forEach(function (c) {
+        var el = catBubbleEls[c.id];
+        el.hidden = !c.asleep;
+        if (c.asleep) toScreen(c.neko.position.clone().add(new THREE.Vector3(0, 3.2, 0)), el);
+      });
+      renderCustomers();
+    }
+    function floatText(v3, text) {
+      var el = document.createElement('div');
+      el.className = 'float';
+      el.textContent = text;
+      overlay.appendChild(el);
+      toScreen(v3, el);
+      setTimeout(function () { el.remove(); }, 1400);
+    }
+    function confetti() {
+      var box = document.getElementById('confetti');
+      var em = ['🎉', '⭐', '🐱', '🪙', '✨'];
+      for (var i = 0; i < 18; i++) {
+        var s = document.createElement('span');
+        s.textContent = em[i % em.length];
+        s.style.left = Math.random() * 100 + '%';
+        s.style.animationDelay = (Math.random() * 0.6) + 's';
+        box.appendChild(s);
+        (function (s) { setTimeout(function () { s.remove(); }, 2600); })(s);
+      }
+    }
+
+    // ---- HUD ----
+    function renderHud() {
+      document.getElementById('coins').textContent = '🪙 ' + state.coins;
+      document.getElementById('level').textContent = '🏪 レベル ' + state.level;
+      document.getElementById('dayNo').textContent = state.day + 'にちめ';
+      var k = phase === 'night' ? 1 : phase === 'morning' ? 0 : dayT / DAY_SEC;
+      document.getElementById('clockFill').style.width = (k * 100) + '%';
+      document.getElementById('clockSun').style.left = (k * 100) + '%';
+      document.getElementById('clockSun').textContent = phase === 'night' ? '🌙' : phase === 'morning' ? '🌅' : k > 0.75 ? '🌇' : '☀️';
+    }
+    function renderGoal() {
+      var el = document.getElementById('goal');
+      if (!goal) { el.hidden = true; return; }
+      el.hidden = false;
+      var n = Math.min(goal.n, goalProgress(goal));
+      el.textContent = '🎯 ' + goalText(goal) + '  ' + n + '/' + goal.n + (today.goalDone ? ' ✅' : '');
+      el.classList.toggle('is-done', today.goalDone);
+    }
+    var cardsEl = document.getElementById('catcards');
+    function renderCatCards() {
+      cardsEl.innerHTML = '';
+      cats.forEach(function (c) {
+        var d = document.createElement('div');
+        d.className = 'catcard' + (selected === c ? ' is-active' : '');
+        var where = c.place ? PLACES[c.place].emoji + ' ' + PLACES[c.place].name : '❓ どこに おく？';
+        var lv = c.place ? catLevel(c, c.place) : 0;
+        var stars = lv ? '★'.repeat(lv) : '';
+        var fav = c.place && FAVORITE[c.id].indexOf(c.place) >= 0 ? ' 💪' : '';
+        d.innerHTML =
+          '<div class="catcard__name"><span class="catcard__dot" style="background:' + c.def.css + '"></span>' + c.def.name + '</div>' +
+          '<div class="catcard__where">' + where + fav + '</div>' +
+          '<div class="catcard__stars">' + stars + '</div>' +
+          (c.asleep ? '<div class="catcard__z">💤</div>' : '');
+        d.addEventListener('pointerdown', function (ev) { ev.preventDefault(); selectCat(c); });
+        cardsEl.appendChild(d);
+      });
+    }
+    function renderAll() { renderHud(); renderGoal(); renderCatCards(); renderPlaceLabels(); }
+
+    // =====================================================================
+    //  よる: まとめ → どうぐや → あした の もくひょう
+    // =====================================================================
+    var nightModal = document.getElementById('nightModal'), nightPanel = document.getElementById('nightPanel');
+    function showNight(page, leveled) {
+      nightModal.hidden = false;
+      var html = '';
+      if (page === 1) {
+        var best = null;
+        PRODUCTS.forEach(function (p) { if (today.sold[p] && (!best || today.sold[p] > today.sold[best])) best = p; });
+        var leftover = MATERIALS.filter(function (m) { return state.inv[m] > 0; }).map(function (m) { return ITEMS[m].emoji + ' ' + state.inv[m]; }).join('　');
+        html += '<h2>🌙 きょうの まとめ</h2>';
+        html += '<div class="srow"><span class="lbl">きょうの うりあげ</span><span class="big">🪙 +' + today.earned + '</span></div>';
+        html += '<div class="srow"><span class="lbl">いちばん うれたもの</span><span class="big">' + (best ? ITEMS[best].emoji + ' ×' + today.sold[best] : '—') + '</span></div>';
+        html += '<div class="srow"><span class="lbl">あまった そざい</span><span class="big">' + (leftover || 'なし') + '</span></div>';
+        html += '<div class="srow"><span class="lbl">もくひょう</span><span>' + goalText(goal) + '</span><span class="big">' + (today.goalDone ? '✅ たっせい！' : '🌱 あしたも がんばろう') + '</span></div>';
+        if (leveled) html += '<div class="goalcard">🎊 おみせが レベル ' + state.level + ' に なった！<br>あたらしい ばしょ が できたよ</div>';
+        html += '<button class="btn btn--big btn--orange" id="nightNext">つぎへ ➡</button>';
+        nightPanel.innerHTML = html;
+        document.getElementById('nightNext').addEventListener('click', function () { showNight(2); });
+        if (leveled) say('🎊 おみせが レベル ' + state.level + ' に なったよ！ あたらしい ばしょ が できたよ');
+      } else if (page === 2) {
+        html += '<h2>🛠️ どうぐや</h2><div class="srow"><span class="big">🪙 ' + state.coins + '</span><span class="lbl">もっている コイン</span></div>';
+        html += '<div class="tools" id="tools"></div>';
+        html += '<button class="btn btn--big btn--orange" id="nightNext">つぎへ ➡</button>';
+        nightPanel.innerHTML = html;
+        renderTools();
+        document.getElementById('nightNext').addEventListener('click', function () { showNight(3); });
+      } else {
+        state.day += 1;
+        resetToday();
+        pickGoal();
+        state.goalIdx -= 1; // startMorning で もういちど えらぶ
+        html += '<h2>🎯 あしたの もくひょう</h2>';
+        html += '<div class="goalcard">' + goalText(goal) + '</div>';
+        html += '<button class="btn btn--big btn--orange" id="nightNext">🌅 あさに する</button>';
+        nightPanel.innerHTML = html;
+        document.getElementById('nightNext').addEventListener('click', function () { nightModal.hidden = true; startMorning(); });
+        save();
+      }
+    }
+    function renderTools() {
+      var box = document.getElementById('tools');
+      if (!box) return;
+      box.innerHTML = '';
+      TOOLS.forEach(function (t) {
+        if (t.level && state.level < t.level) return;
+        var owned = !!state.tools[t.id], poor = !owned && state.coins < t.price;
+        var d = document.createElement('div');
+        d.className = 'tool' + (owned ? ' is-owned' : '') + (poor ? ' is-poor' : '');
+        d.innerHTML = '<div class="tool__emoji">' + t.emoji + '</div><div>' + t.name + '</div>' +
+          '<div class="tool__fx">' + t.fx + '</div>' +
+          '<div class="tool__price">' + (owned ? '✅ もってる' : '🪙 ' + t.price) + '</div>';
+        d.addEventListener('click', function () {
+          if (owned) { say('✅ もう もってるよ'); return; }
+          if (poor) { say('🪙 コインが たりないよ。また こんど'); return; }
+          state.coins -= t.price;
+          state.tools[t.id] = true;
+          say('🎁 ' + t.name + ' を かったよ！');
+          refreshPlaces();
+          renderHud();
+          save();
+          showNight(2);
+        });
+        box.appendChild(d);
+      });
+    }
+
+    // =====================================================================
+    //  せってい
+    // =====================================================================
+    var settingsModal = document.getElementById('settingsModal');
+    var voiceBtn = document.getElementById('voiceBtn');
+    var settingsMain = document.getElementById('settingsMain'), settingsConfirm = document.getElementById('settingsConfirm');
+    function renderVoiceBtn() { voiceBtn.textContent = settings.voice ? '🔊 よみあげ オン' : '🔇 よみあげ オフ'; }
+    renderVoiceBtn();
+    function closeSettings() { settingsModal.hidden = true; settingsMain.hidden = false; settingsConfirm.hidden = true; }
+    document.getElementById('settingsBtn').addEventListener('click', function () { settingsModal.hidden = false; });
+    document.getElementById('settingsClose').addEventListener('click', closeSettings);
+    voiceBtn.addEventListener('click', function () {
+      settings.voice = !settings.voice;
+      saveJSON(SETTING_KEY, settings);
+      renderVoiceBtn();
+      if (!settings.voice && window.speechSynthesis) speechSynthesis.cancel();
+    });
+    document.getElementById('resetBtn').addEventListener('click', function () { settingsMain.hidden = true; settingsConfirm.hidden = false; });
+    document.getElementById('resetNo').addEventListener('click', closeSettings);
+    document.getElementById('resetYes').addEventListener('click', function () {
+      try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf('neko-shop-') === 0) localStorage.removeItem(k); }); } catch (e) {}
+      location.reload();
+    });
+
+    // =====================================================================
+    //  まいフレーム
+    // =====================================================================
+    var lastLabel = 0;
+    stage.start(function (dt, t) {
+      var paused = !nightModal.hidden || !settingsModal.hidden;
+      // ねこ の うごき
+      cats.forEach(function (c, i) {
+        var n = c.neko;
+        if (c.target) {
+          var d = c.target.clone().sub(c.pos);
+          var step = 9 * dt;
+          if (d.length() <= step) { c.pos.copy(c.target); c.target = null; }
+          else c.pos.add(d.normalize().multiplyScalar(step));
+          n.position.x = c.pos.x; n.position.z = c.pos.z;
+          n.rotation.y = d.x < 0 ? 0.25 : -0.25;
+        } else n.rotation.y = 0;
+        NEKO.idle(n, t, i * 1.7);
+        var lift = selected === c ? Math.abs(Math.sin(t * 6)) * 0.8 : 0;
+        n.position.y += lift;
+        n.rotation.z = c.asleep ? -0.35 : 0;
+      });
+      // おきゃくさん の うごき
+      for (var i = customers.length - 1; i >= 0; i--) {
+        var c = customers[i];
+        if (c.state === 'walk') {
+          var goalPos = queueSpot(waitingCustomers().indexOf(c));
+          var dd = goalPos.clone().sub(c.mesh.position);
+          var st = 6 * dt;
+          if (dd.length() <= st) { c.mesh.position.copy(goalPos); c.state = 'wait'; c.waitT = 0; c.serveT = 0; }
+          else c.mesh.position.add(dd.normalize().multiplyScalar(st));
+        } else if (c.state === 'leave') {
+          c.mesh.position.x += 7 * dt;
+          c.mesh.position.z -= 2 * dt;
+          if (c.happy) c.mesh.position.y = GROUND_Y + Math.abs(Math.sin(t * 10)) * 0.4;
+          if (c.mesh.position.x > 24) { scene.remove(c.mesh); customers.splice(i, 1); }
+        } else if (c.state === 'wait') {
+          // れつ が すすんだら まえに
+          var qs = queueSpot(waitingCustomers().indexOf(c));
+          if (qs.distanceTo(c.mesh.position) > 0.1) { c.state = 'walk'; }
+        }
+      }
+      if (phase === 'day' && !paused) {
+        simulate(dt);
+        dayT += dt;
+        if (dayT >= DAY_SEC) startNight();
+      }
+      // そら の いろ
+      var k = phase === 'night' ? 1 : phase === 'day' ? Math.max(0, (dayT / DAY_SEC - 0.7) / 0.3) : 0;
+      stage.renderer.setClearColor(new THREE.Color(NEKO.PAPER).lerp(new THREE.Color(0xf2c9a2), k));
+
+      updateOverlayPositions();
+      if (t - lastLabel > 0.25) { lastLabel = t; renderPlaceLabels(); if (phase === 'day') { renderHud(); renderGoal(); } }
+    });
+
+    // =====================================================================
+    //  はじまり
+    // =====================================================================
+    refreshPlaces();
+    cats.forEach(function (c) {
+      var p = state.assign[c.id];
+      if (p && PLACES[p] && placeOpen(p) && !catAt(p)) {
+        c.place = p;
+        var s = placeObjs[p].spot;
+        c.pos.set(s[0], s[1], s[2]);
+        c.neko.position.set(s[0], catBaseY(s[1]), s[2]);
+        c.neko.userData.baseY = catBaseY(s[1]);
+      } else state.assign[c.id] = null;
+    });
+    startMorning();
+
+    // テスト よう
+    window.__omise = { state: state, get run() { return run; }, cats: cats, startDay: startDay, startNight: startNight, startMorning: startMorning, refreshPlaces: refreshPlaces, renderAll: renderAll,
+      simulate: simulate, get phase() { return phase; }, set dayT(v) { dayT = v; }, get dayT() { return dayT; },
+      tapPlace: tapPlace, moveCat: moveCat, catById: catById, get customers() { return customers; }, today: function () { return today; } };
+  })();
+  </script>
+</body>
+</html>
