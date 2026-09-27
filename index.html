@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="ねこ ひろば">
+  <meta name="theme-color" content="#fbf6e9">
+  <title>ゲーム ひろば</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Yusei+Magic&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="shared/style.css">
+  <style>
+    .hero { text-align: center; margin-bottom: 18px; }
+    .hero h1 { margin-bottom: 12px; }
+    #stage { height: min(46vh, 380px); min-height: 220px; }
+    .names { margin-top: 12px; }
+    .games-title { text-align: center; margin: 26px 0 16px; }
+    .hint { text-align: center; opacity: 0.7; margin-top: 8px; font-size: clamp(15px, 2.2vw, 19px); }
+    @media (orientation: landscape) and (max-height: 600px) {
+      #stage { height: 42vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1><span class="ink-title">ゲーム ひろば</span></h1>
+      <div id="stage" class="stage" aria-label="3びき の ねこ"></div>
+      <div class="row names" id="names"></div>
+      <p class="hint">ねこ を さわると ジャンプ するよ</p>
+    </section>
+
+    <h2 class="games-title"><span class="ink-title">あそぶ ゲーム を えらんでね</span></h2>
+    <section class="grid" id="games"></section>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="shared/neko.js"></script>
+  <script>
+    // ==== ゲーム の いちらん =================================================
+    // あたらしい ゲーム は ここに 1つ たすだけ。
+    //   id:    games/ の なか の ファイルめい (.html は つけない)
+    //   title: ひらがな・カタカナ だけ、わかちがき
+    //   desc:  みじかい せつめい
+    //   icon:  えもじ 1つ (よめなくても わかる ように)
+    //   color: 'orange' | 'blue' | 'yellow' | '' (カード の いろ)
+    var GAMES = [
+      { id: 'neko-viewer', title: 'ねこ を みる', desc: 'くるくる まわして みよう', icon: '🐱', color: 'orange' }
+    ];
+
+    var gamesEl = document.getElementById('games');
+    GAMES.forEach(function (g) {
+      var a = document.createElement('a');
+      a.className = 'card' + (g.color ? ' card--' + g.color : '');
+      a.href = 'games/' + g.id + '.html';
+      a.innerHTML =
+        '<div class="card__icon">' + g.icon + '</div>' +
+        '<div class="card__title">' + g.title + '</div>' +
+        (g.desc ? '<div class="card__desc">' + g.desc + '</div>' : '');
+      gamesEl.appendChild(a);
+    });
+
+    // ==== 3びき の ねこ ====================================================
+    var namesEl = document.getElementById('names');
+    NEKO.CATS.forEach(function (c) {
+      var chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.innerHTML = '<span class="chip__dot" style="background:' + c.css + '"></span>' + c.name;
+      namesEl.appendChild(chip);
+    });
+
+    var stageEl = document.getElementById('stage');
+    var stage = NEKO.createStage(stageEl, {
+      onResize: function (w, h, s) {
+        // たて でも よこ でも 3びき が おさまる ように カメラ を さげる
+        NEKO.fitCamera(s.camera, w / h, 3 * 9.2 + 2, NEKO.SIZE.height - NEKO.SIZE.floorY + 2, 1.2);
+      }
+    });
+    var nekos = NEKO.createAll();
+    var jump = [];
+    nekos.forEach(function (n, i) {
+      n.position.x = (i - 1) * 9.2;
+      n.rotation.y = (i - 1) * -0.12;
+      stage.scene.add(n);
+      jump.push(0);
+    });
+
+    stage.start(function (dt, t) {
+      nekos.forEach(function (n, i) {
+        NEKO.idle(n, t, i * 1.7);
+        if (jump[i] > 0) {
+          jump[i] = Math.max(0, jump[i] - dt * 1.6);
+          var k = Math.sin(jump[i] * Math.PI);
+          n.position.y += k * 2.2;
+          n.rotation.z = k * 0.15;
+        } else {
+          n.rotation.z = 0;
+        }
+      });
+    });
+
+    stageEl.addEventListener('pointerdown', function (e) {
+      var hit = stage.pick(e.clientX, e.clientY, nekos);
+      if (!hit) return;
+      var i = nekos.indexOf(hit);
+      if (i >= 0 && jump[i] === 0) jump[i] = 1;
+    });
+  </script>
+</body>
+</html>

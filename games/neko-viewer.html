@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="ねこ を みる">
+  <meta name="theme-color" content="#fbf6e9">
+  <title>ねこ を みる</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Yusei+Magic&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/style.css">
+  <style>
+    #stage {
+      position: absolute;
+      inset: 0;
+      border: 0;
+      border-radius: 0;
+    }
+    .name-badge {
+      position: absolute;
+      z-index: 2;
+      top: calc(16px + var(--safe-top));
+      left: 50%;
+      transform: translateX(-50%);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .hint {
+      position: absolute;
+      z-index: 2;
+      left: 0; right: 0;
+      bottom: calc(110px + var(--safe-bottom));
+      text-align: center;
+      opacity: 0.6;
+      pointer-events: none;
+      font-size: clamp(15px, 2.4vw, 20px);
+    }
+    .hud--bottom .btn { min-width: 120px; }
+    @media (max-width: 520px) {
+      .hud--bottom .btn { min-width: 0; padding: 8px 14px; font-size: 20px; }
+      .hint { bottom: calc(160px + var(--safe-bottom)); }
+    }
+  </style>
+</head>
+<body class="fullscreen">
+  <div id="stage" class="stage"></div>
+
+  <div class="hud hud--top-left">
+    <a class="btn" href="../index.html" id="back"><span class="emoji">🏠</span> もどる</a>
+  </div>
+  <div class="hud hud--top-right">
+    <button class="btn" id="spin" type="button"><span class="emoji">🔄</span> まわす</button>
+  </div>
+  <h1 class="name-badge"><span class="ink-title" id="name">みんな</span></h1>
+  <p class="hint">ゆび で なぞると くるくる まわるよ</p>
+
+  <div class="hud hud--bottom" id="picker">
+    <button class="btn btn--orange" type="button" data-cat="orange">オレンジ</button>
+    <button class="btn btn--blue"   type="button" data-cat="blue">あお</button>
+    <button class="btn btn--yellow" type="button" data-cat="yellow">きいろ</button>
+    <button class="btn"             type="button" data-cat="all">みんな</button>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="../shared/neko.js"></script>
+  <script>
+    var SAVE_KEY = 'haruneko.viewer';
+    function load() { try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; } }
+    function save(o) { try { localStorage.setItem(SAVE_KEY, JSON.stringify(o)); } catch (e) {} }
+    var saved = load();
+
+    var stageEl = document.getElementById('stage');
+    var stage = NEKO.createStage(stageEl, {
+      onResize: function (w, h) { aspect = w / h; if (stage) fitCamera(aspect); }
+    });
+
+    // まわす ための いれもの
+    var pivot = new THREE.Group();
+    stage.scene.add(pivot);
+
+    var nekos = {};
+    NEKO.CATS.forEach(function (c) {
+      var n = NEKO.create(c);
+      nekos[c.id] = n;
+      pivot.add(n);
+    });
+
+    var current = saved.cat || 'all';
+    var spinning = saved.spin !== false;
+    var aspect = 1;
+
+    function fitCamera(a) {
+      aspect = a;
+      var all = current === 'all';
+      var width = all ? 3 * 9.2 + 4 : NEKO.SIZE.width + 6;   // うつしたい はば
+      var height = NEKO.SIZE.height - NEKO.SIZE.floorY + 5;   // まわしても ジャンプ しても はみださない よゆう
+      NEKO.fitCamera(stage.camera, a, width, height, 2.0, 1.2);
+    }
+
+    function show(id) {
+      current = id;
+      NEKO.CATS.forEach(function (c, i) {
+        var n = nekos[c.id];
+        n.visible = id === 'all' || id === c.id;
+        n.position.x = id === 'all' ? (i - 1) * 9.2 : 0;
+      });
+      var cat = NEKO.CATS.filter(function (c) { return c.id === id; })[0];
+      document.getElementById('name').textContent = cat ? cat.name : 'みんな';
+      document.querySelectorAll('#picker .btn').forEach(function (b) {
+        b.classList.toggle('is-active', b.getAttribute('data-cat') === id);
+      });
+      fitCamera(aspect);
+      saved.cat = id;
+      save(saved);
+    }
+
+    function setSpin(on) {
+      spinning = on;
+      document.getElementById('spin').innerHTML = on
+        ? '<span class="emoji">⏸️</span> とめる'
+        : '<span class="emoji">🔄</span> まわす';
+      saved.spin = on;
+      save(saved);
+    }
+
+    document.getElementById('picker').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-cat]');
+      if (b) show(b.getAttribute('data-cat'));
+    });
+    document.getElementById('spin').addEventListener('click', function () { setSpin(!spinning); });
+
+    // ゆび で なぞって まわす
+    var drag = null, vel = 0;
+    stageEl.addEventListener('pointerdown', function (e) {
+      drag = { x: e.clientX, y: e.clientY, moved: 0, id: e.pointerId };
+      vel = 0;
+      stageEl.setPointerCapture(e.pointerId);
+    });
+    stageEl.addEventListener('pointermove', function (e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      drag.x = e.clientX; drag.y = e.clientY;
+      drag.moved += Math.abs(dx) + Math.abs(dy);
+      pivot.rotation.y += dx * 0.012;
+      pivot.rotation.x = Math.max(-0.7, Math.min(0.7, pivot.rotation.x + dy * 0.008));
+      vel = dx * 0.012;
+    });
+    function endDrag(e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      if (drag.moved < 8) {
+        // タップ: ねこ が ジャンプ
+        var list = Object.keys(nekos).map(function (k) { return nekos[k]; }).filter(function (n) { return n.visible; });
+        var hit = stage.pick(e.clientX, e.clientY, list);
+        if (hit) hit.userData.jump = 1;
+      }
+      drag = null;
+    }
+    stageEl.addEventListener('pointerup', endDrag);
+    stageEl.addEventListener('pointercancel', endDrag);
+
+    show(current);
+    setSpin(spinning);
+
+    stage.start(function (dt, t) {
+      if (!drag) {
+        if (spinning) pivot.rotation.y += dt * 0.6;
+        pivot.rotation.y += vel;
+        vel *= 0.94;
+        if (!spinning) pivot.rotation.x *= 0.97; // ゆっくり もとに もどる
+      }
+      NEKO.CATS.forEach(function (c, i) {
+        var n = nekos[c.id];
+        NEKO.idle(n, t, i * 1.7);
+        if (n.userData.jump > 0) {
+          n.userData.jump = Math.max(0, n.userData.jump - dt * 1.6);
+          var k = Math.sin(n.userData.jump * Math.PI);
+          n.position.y += k * 2.2;
+        }
+      });
+    });
+  </script>
+</body>
+</html>
